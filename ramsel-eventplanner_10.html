@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ramsel eventplanner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font-family: Bahnschrift, "Segoe UI", system-ui, sans-serif; color: #1f2a24; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; background: #1f2a24; color: #f2f4ef; }
+  header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; margin-right: auto; }
+  header span { font-size: .85rem; opacity: .75; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid #f2f4ef; background: transparent; color: #f2f4ef; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #f2f4ef; color: #1f2a24; }
+  .main { flex: 1; display: flex; min-height: 0; }
+  aside { width: 230px; padding: 12px; background: #f2f4ef; border-right: 1px solid #c9d0c4; overflow: auto; box-sizing: border-box; }
+  .icoon { width: 34px; height: 34px; transform: translate(-50%, -50%) scale(var(--si, 1)); border-radius: 50%; background: #fff; border: 2px solid #1f2a24; box-sizing: border-box; padding: 3px; cursor: grab; }
+  .icoon svg { display: block; width: 100%; height: 100%; }
+  .pijl { position: relative; width: 44px; height: 44px; --k: var(--sp, 1); transform: translate(-50%, -50%) scale(var(--k, 1)) rotate(var(--r, 0deg)) scale(var(--sx, 1), var(--sy, 1)); filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff); cursor: grab; }
+  .pijl .h { display: none; position: absolute; left: 0; top: 0; width: 26px; height: 26px; box-sizing: border-box; padding: 3px; border-radius: 50%; background: #fff; border: 2px solid #1f2a24; cursor: pointer; touch-action: none; transform-origin: 0 0; transform: scale(calc(1 / var(--sx, 1)), calc(1 / var(--sy, 1))) rotate(calc(var(--r, 0deg) * -1)) scale(calc(1 / var(--k, 1))) translate(-50%, -50%); }
+  .pijl.sel .h { display: block; }
+  .pijl .h svg { display: block; width: 100%; height: 100%; }
+  .pijl .h.draai { left: 100%; top: 0; cursor: grab; }
+  .pijl .h.rek { left: 0; top: 0; cursor: nwse-resize; }
+  .pijl .h.weg { left: 100%; top: 100%; }
+  .pijl.los { --k: var(--si, 1); transform: translate(-50%, -50%) scale(var(--k, 1)) rotate(var(--r, 0deg)) scale(var(--sx, 1), var(--sy, 1)); filter: none; }
+  .pijl.los.nr { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .7)); }
+  .rond { width: 100%; height: 100%; border-radius: 50%; background: #fff; border: 2px solid #1f2a24; box-sizing: border-box; padding: 4px; }
+  .pijl svg, .mini svg { display: block; width: 100%; height: 100%; }
+  .chip.mini { display: inline-block; width: 56px; height: 52px; padding: 4px; margin: 0 6px 6px 0; }
+  .kleurlabel { font-size: .78rem; font-weight: 600; margin: 8px 0 4px; }
+  details { margin-bottom: 12px; }
+  summary { cursor: pointer; font-weight: 700; font-size: 1rem; padding: 6px 0; border-bottom: 2px solid #1f2a24; }
+  aside h2 { margin: 0 0 8px; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: #55635a; }
+  aside p { font-size: .78rem; color: #55635a; margin: 10px 0 0; }
+  .chip { display: block; width: 100%; margin-bottom: 6px; padding: 8px 10px; text-align: left; border: 1px solid #1f2a24; background: #fff; color: #1f2a24; cursor: grab; }
+  .chip:hover { background: #dbe9f7; color: #1f2a24; }
+  #map { flex: 1; }
+  .inkom { position: relative; transform: translate(-50%, calc(-100% - 8px)) scale(var(--s, 1)); transform-origin: 50% calc(100% + 8px); background: #e4572e; color: #fff; border: 2px solid #fff; border-radius: 4px; padding: 3px 10px; font-weight: 600; font-size: .85rem; white-space: nowrap; cursor: grab; }
+  .inkom::after { content: ""; position: absolute; left: 50%; bottom: -9px; margin-left: -6px; border: 6px solid transparent; border-top-color: #fff; }
+  .greep { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid #1f2a24; box-sizing: border-box; cursor: grab; }
+  .hal-label { background: rgba(255,255,255,.9); border: 1px solid #1f2a24; font-weight: 600; }
+  .pop { display: flex; flex-direction: column; gap: 8px; }
+  .pop input { font: inherit; padding: 5px 8px; }
+  .pop label { font-size: .8rem; }
+  .pop button { color: #1f2a24; border-color: #1f2a24; }
+  .pop button:hover { background: #1f2a24; color: #fff; }
+  @media (max-width: 700px) { .main { flex-direction: column; } aside { width: 100%; max-height: 150px; border-right: 0; border-bottom: 1px solid #c9d0c4; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ramsel eventplanner</h1>
+  <span>Sleep inkomsten en hallen om ze te verplaatsen. Klik erop om te bewerken.</span>
+  <button id="add">Inkom toevoegen</button>
+  <button id="reset">Terugzetten</button>
+</header>
+<div class="main">
+  <aside id="menu"></aside>
+  <div id="map"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const KEY = 'ramsel-plan-2026';
+const KEY_OBJ = 'ramsel-objecten-2026';
+const FALLBACK = [51.02, 4.87];
+const DEFAULTS = [
+  ['Kapelleweg (Westmeerbeek)', 'Kapelleweg', [0, -0.012]],
+  ['Hooilaar (Herselt)', 'Hooilaar', [0, 0.012]],
+  ['Bergstraat (Aarschot)', 'Bergstraat', [-0.008, 0]],
+  ['Kappelenweg (Begijnendijk)', 'Kappelenweg', [0.008, 0]]
+];
+// VOORBEELDMATEN (behalve containers): pas aan naar de echte maten. b = breedte, l = lengte, in meter
+const CATS = [
+  { key: 'alu', titel: 'Aluhallen', eigen: 'Aluhal', kleur: '#4a90d9', items: [['Aluhal', 5, 10], ['Aluhal', 10, 15], ['Aluhal', 10, 20], ['Aluhal', 15, 30]] },
+  { key: 'popup', titel: 'Pop-uptenten', eigen: 'Pop-uptent', kleur: '#6c7ae0', items: [['Pop-uptent', 3, 3], ['Pop-uptent', 3, 4.5], ['Pop-uptent', 3, 6]] },
+  { key: 'container', titel: 'Containers', eigen: 'Container', kleur: '#8a8f98', items: [['Container 20ft', 2.44, 6.06], ['Container 40ft', 2.44, 12.19]] },
+  { key: 'koel', titel: 'Koelwagens', eigen: 'Koelwagen', kleur: '#35b6c9', items: [['Koelwagen', 2.5, 7]] },
+  { key: 'regie', titel: 'Regiewagens', eigen: 'Regiewagen', kleur: '#8e6bbf', items: [['Regiewagen', 2.5, 6]] },
+  { key: 'pa', titel: 'PA-wagen', eigen: 'PA-wagen', kleur: '#d9a441', items: [['PA-wagen', 2.5, 6]] },
+  { key: 'proef', titel: 'Proeven', eigen: 'Proef', kleur: '#d64d8b', items: [['Proef', 5, 5], ['Proef', 10, 10]] },
+  { key: 'ehbo', titel: 'EHBO-post', eigen: 'EHBO-post', kleur: '#d94a4a', items: [['EHBO-post', 3, 3]] },
+  { key: 'wc', titel: 'Toiletten', eigen: 'Toilet', kleur: '#6d7f6a', items: [['Toilet', 1.2, 1.2], ['Toiletwagen', 2.5, 6]] },
+  { key: 'stand', titel: 'Drank- en eetstandjes', eigen: 'Stand', kleur: '#4caf6a', items: [['Drankstand', 3, 3], ['Eetstand', 3, 3], ['Stand', 3, 6]] }
+];
+const TYPES = [];
+CATS.forEach(c => {
+  c.items.forEach(([naam, b, l], i) => TYPES.push({ id: c.key + i, cat: c.key, naam, b, l }));
+  TYPES.push({ id: c.key + '-eigen', cat: c.key, naam: c.eigen, b: 0, l: 0 });
+});
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const map = L.map('map', { maxZoom: 22 }).setView(FALLBACK, 15);
+const straten = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Tiles &copy; Esri' });
+const satelliet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Tiles &copy; Esri' }).addTo(map);
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '&copy; OpenStreetMap' });
+L.control.layers({ 'Kaart': straten, 'Satelliet': satelliet, 'OpenStreetMap': osm }).addTo(map);
+L.control.scale({ metric: true, imperial: false }).addTo(map);
+
+function setSchaal(z) {
+  if (typeof z !== 'number') z = map.getZoom();
+  const s = Math.min(6, Math.max(0.6, Math.pow(2, z - 17)));
+  document.getElementById('map').style.setProperty('--s', s);
+  const sp = Math.max(0.1, Math.pow(2, z - 20));
+  document.getElementById('map').style.setProperty('--sp', sp);
+  const si = Math.min(2.5, Math.max(0.8, Math.pow(2, z - 18)));
+  document.getElementById('map').style.setProperty('--si', si);
+}
+map.on('zoom', setSchaal);
+map.on('zoomanim', e => setSchaal(e.zoom));
+setSchaal();
+
+const layer = L.layerGroup().addTo(map);
+const objLayer = L.layerGroup().addTo(map);
+const pijlLayer = L.layerGroup().addTo(map);
+let pijlen = [];
+const PIJL_KEY = 'ramsel-pijlen-2026';
+let items = [];
+let objs = [];
+
+function store(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {} }
+function read(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
+function save() { store(KEY, items.map(({ name, lat, lng }) => ({ name, lat, lng }))); }
+function saveObj() { store(KEY_OBJ, objs.map(({ naam, cat, icoon, toon, b, l, deg, lat, lng }) => ({ naam, cat, icoon, toon, b, l, deg, lat, lng }))); }
+function fit() {
+  if (items.length) map.fitBounds(L.latLngBounds(items.map(i => [i.lat, i.lng])).pad(0.4));
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function geo(q) {
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=be&q=' + encodeURIComponent(q));
+    const j = await r.json();
+    return j[0] ? [+j[0].lat, +j[0].lon] : null;
+  } catch (e) { return null; }
+}
+
+/* ---------- Inkomsten ---------- */
+function addInkom(d) {
+  const el = document.createElement('div');
+  el.className = 'inkom';
+  el.textContent = d.name;
+  const m = L.marker([d.lat, d.lng], {
+    draggable: true,
+    icon: L.divIcon({ html: el, className: '', iconSize: [0, 0] })
+  }).addTo(layer);
+  const it = { name: d.name, lat: d.lat, lng: d.lng };
+  items.push(it);
+  m.on('dragend', () => { const p = m.getLatLng(); it.lat = p.lat; it.lng = p.lng; save(); });
+  m.bindPopup(() => {
+    const box = document.createElement('div');
+    box.className = 'pop';
+    const inp = document.createElement('input');
+    inp.value = it.name;
+    inp.oninput = () => { it.name = inp.value; el.textContent = it.name || 'Inkom'; save(); };
+    const del = document.createElement('button');
+    del.textContent = 'Verwijder inkom';
+    del.onclick = () => { layer.removeLayer(m); items = items.filter(x => x !== it); save(); };
+    box.append(inp, del);
+    return box;
+  });
+}
+
+/* ---------- Pictogrammen op objecten ---------- */
+const ICONEN = {
+  wc: ['Toilet', '<svg viewBox="0 0 40 40"><g fill="#1f2a24"><circle cx="12" cy="9" r="3.5"/><path d="M7 15h10v11h-3v10h-4V26H7z"/><circle cx="28" cy="9" r="3.5"/><path d="M28 14l7 14h-4v8h-6v-8h-4z"/></g><path d="M20 6v30" stroke="#1f2a24" stroke-width="1.5"/></svg>'],
+  ehbo: ['EHBO (rood kruis)', '<svg viewBox="0 0 40 40"><path d="M16 5h8v11h11v8H24v11h-8V24H5v-8h11z" fill="#d62d2d"/></svg>'],
+  burger: ['Hamburger', '<svg viewBox="0 0 40 40"><path d="M7 19a13 11 0 0 1 26 0z" fill="#e0a050" stroke="#1f2a24" stroke-width="1.5"/><path d="M6 21q3.5 3 7 0t7 0t7 0t7 0v2H6z" fill="#6cbf4b"/><rect x="7" y="24" width="26" height="5" rx="2.5" fill="#6b3b1f"/><path d="M7 30h26v1a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4z" fill="#e0a050" stroke="#1f2a24" stroke-width="1.5"/></svg>'],
+  ijs: ['IJsje', '<svg viewBox="0 0 40 40"><path d="M12 19h16L20 36z" fill="#d9a15b" stroke="#1f2a24" stroke-width="1.5" stroke-linejoin="round"/><circle cx="20" cy="13" r="8.5" fill="#f4a3c4" stroke="#1f2a24" stroke-width="1.5"/></svg>'],
+  friet: ['Frietjes', '<svg viewBox="0 0 40 40"><g fill="#f5c542" stroke="#1f2a24" stroke-width="1"><rect x="10" y="6" width="5" height="16" rx="1.5"/><rect x="17" y="3" width="5" height="19" rx="1.5"/><rect x="24" y="7" width="5" height="15" rx="1.5"/></g><path d="M8 19h24l-3 17H11z" fill="#d62d2d" stroke="#1f2a24" stroke-width="1.5" stroke-linejoin="round"/></svg>'],
+  bier: ['Bier', '<svg viewBox="0 0 40 40"><rect x="9" y="12" width="17" height="22" rx="2" fill="#f0b429" stroke="#1f2a24" stroke-width="1.5"/><path d="M8 13q0-6 5-6 2-3 6 0 6-1 7 6z" fill="#fff" stroke="#1f2a24" stroke-width="1.5"/><path d="M26 16h4q3 0 3 3v6q0 3-3 3h-4" fill="none" stroke="#1f2a24" stroke-width="2.5"/></svg>']
+,  drankje: ['Drankje', '<svg viewBox="0 0 40 40"><path d="M11 13h18l-3 23H14z" fill="#4aa8e0" stroke="#1f2a24" stroke-width="1.5" stroke-linejoin="round"/><rect x="9" y="10" width="22" height="4" rx="1.5" fill="#fff" stroke="#1f2a24" stroke-width="1.5"/><path d="M22 10l4-7h5" fill="none" stroke="#d62d2d" stroke-width="2.5" stroke-linecap="round"/></svg>'],
+  cocktail: ['Cocktail', '<svg viewBox="0 0 40 40"><path d="M6 8h28L20 23z" fill="#f4a3c4" stroke="#1f2a24" stroke-width="1.5" stroke-linejoin="round"/><path d="M20 23v12M12 35h16" fill="none" stroke="#1f2a24" stroke-width="2.5" stroke-linecap="round"/><circle cx="29" cy="9" r="3.5" fill="#f0b429" stroke="#1f2a24" stroke-width="1.2"/></svg>']
+};
+function defaultIcoon(cat, naam) {
+  if (cat === 'wc') return 'wc';
+  if (cat === 'ehbo') return 'ehbo';
+  if (cat === 'stand') return /drank/i.test(naam) ? 'bier' : /eet/i.test(naam) ? 'burger' : '';
+  return '';
+}
+function greepIcoon(o) {
+  return o.icoon && ICONEN[o.icoon]
+    ? L.divIcon({ html: '<div class="icoon">' + ICONEN[o.icoon][1] + '</div>', className: '', iconSize: [0, 0] })
+    : L.divIcon({ html: '<div class="greep"></div>', className: '', iconSize: [14, 14] });
+}
+
+/* ---------- Hallen op echte schaal (meter) ---------- */
+function corners(lat, lng, b, l, deg) {
+  const a = deg * Math.PI / 180;
+  const kLat = 111320, kLng = 111320 * Math.cos(lat * Math.PI / 180);
+  return [[-b / 2, -l / 2], [b / 2, -l / 2], [b / 2, l / 2], [-b / 2, l / 2]].map(([x, y]) => {
+    const rx = x * Math.cos(a) - y * Math.sin(a);
+    const ry = x * Math.sin(a) + y * Math.cos(a);
+    return [lat + ry / kLat, lng + rx / kLng];
+  });
+}
+const tekst = o => o.cat === 'proef' ? esc(o.naam) : esc(o.naam) + ' ' + o.b + ' × ' + o.l + ' m';
+
+function addObj(d) {
+  const o = { naam: d.naam, cat: d.cat || 'alu', icoon: d.icoon !== undefined ? d.icoon : defaultIcoon(d.cat || 'alu', d.naam), b: d.b, l: d.l, deg: d.deg || 0, toon: d.toon !== false, lat: d.lat, lng: d.lng };
+  const kleur = (CATS.find(c => c.key === o.cat) || CATS[0]).kleur;
+  const poly = L.polygon(corners(o.lat, o.lng, o.b, o.l, o.deg), { color: '#1f2a24', weight: 2, fillColor: kleur, fillOpacity: 0.45 }).addTo(objLayer);
+  poly.bindTooltip(tekst(o), { permanent: true, direction: 'center', className: 'hal-label' });
+  if (!o.toon) poly.closeTooltip();
+  const greep = L.marker([o.lat, o.lng], {
+    draggable: true,
+    icon: greepIcoon(o)
+  }).addTo(objLayer);
+  o.poly = poly; o.greep = greep;
+  objs.push(o);
+  const refresh = () => {
+    poly.setLatLngs(corners(o.lat, o.lng, o.b, o.l, o.deg));
+    poly.setTooltipContent(tekst(o));
+    poly.closeTooltip();
+    if (o.toon) poly.openTooltip();
+  };
+  greep.on('drag', () => { const p = greep.getLatLng(); o.lat = p.lat; o.lng = p.lng; refresh(); });
+  greep.on('dragend', saveObj);
+  poly.on('click', () => greep.openPopup());
+  greep.bindPopup(() => {
+    const box = document.createElement('div');
+    box.className = 'pop';
+    const naam = document.createElement('input');
+    naam.value = o.naam;
+    naam.oninput = () => { o.naam = naam.value; refresh(); saveObj(); };
+    const lab = document.createElement('label');
+    lab.textContent = 'Draaiing (graden)';
+    const deg = document.createElement('input');
+    deg.type = 'number'; deg.step = 5; deg.value = o.deg;
+    deg.oninput = () => { o.deg = parseFloat(deg.value) || 0; refresh(); saveObj(); };
+    const del = document.createElement('button');
+    del.textContent = 'Verwijder';
+    del.onclick = () => { objLayer.removeLayer(poly); objLayer.removeLayer(greep); objs = objs.filter(x => x !== o); saveObj(); };
+    const lab2 = document.createElement('label');
+    lab2.textContent = 'Pictogram';
+    const sel = document.createElement('select');
+    sel.innerHTML = '<option value="">Geen</option>' + Object.entries(ICONEN).map(([k, v]) => '<option value="' + k + '">' + v[0] + '</option>').join('');
+    sel.value = o.icoon || '';
+    sel.onchange = () => { o.icoon = sel.value; greep.setIcon(greepIcoon(o)); saveObj(); };
+    const lab3 = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = o.toon;
+    cb.style.padding = '0';
+    cb.style.marginRight = '6px';
+    cb.onchange = () => { o.toon = cb.checked; refresh(); saveObj(); };
+    lab3.append(cb, 'Beschrijving tonen');
+    box.append(naam, lab3, lab, deg, lab2, sel, del);
+    return box;
+  });
+}
+
+function plaats(t, ll) {
+  let b = t.b, l = t.l;
+  if (t.id.endsWith('-eigen')) {
+    b = parseFloat(String(prompt('Breedte in meter?') || '').replace(',', '.'));
+    l = parseFloat(String(prompt('Lengte in meter?') || '').replace(',', '.'));
+    if (!(b > 0 && l > 0)) return;
+  }
+  addObj({ naam: t.naam, cat: t.cat, b, l, deg: 0, lat: ll.lat, lng: ll.lng });
+  saveObj();
+}
+
+/* ---------- Pijlen en parking ---------- */
+const KLEUREN = {
+  blauw: ['#1e63d6', 'Blauw: voor iedereen'],
+  groen: ['#1f9d4c', 'Groen: enkel publiek'],
+  rood: ['#d62d2d', 'Rood: enkel deelnemers']
+};
+const SOORTEN = { recht: 'rechtdoor', links: 'bocht links', rechts: 'bocht rechts' };
+function pijlSvg(soort, kleur) {
+  const c = KLEUREN[kleur][0];
+  const body = {
+    recht: `<path d="M24 46V16" fill="none" stroke="${c}" stroke-width="10"/><path d="M8 18L24 2L40 18Z" fill="${c}"/>`,
+    links: `<path d="M32 46V28Q32 17 21 17H14" fill="none" stroke="${c}" stroke-width="10"/><path d="M16 4L2 17L16 30Z" fill="${c}"/>`,
+    rechts: `<path d="M16 46V28Q16 17 27 17H34" fill="none" stroke="${c}" stroke-width="10"/><path d="M32 4L46 17L32 30Z" fill="${c}"/>`
+  }[soort];
+  return `<svg viewBox="0 0 48 48">${body}</svg>`;
+}
+const PARKING_SVG = '<svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="28" fill="#1e63d6" stroke="#fff" stroke-width="3"/><text x="30" y="33" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="30" fill="#fff">P</text><g fill="#fff" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 40H39L35 47H23Z"/><circle cx="17" cy="50" r="3"/><path d="M39 40L47 37M31 47V53" fill="none"/></g></svg>';
+function nummerSvg(n) {
+  return '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#d64d8b" stroke="#fff" stroke-width="2.5"/><text x="20" y="' + (n > 9 ? 26.5 : 28) + '" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="' + (n > 9 ? 18 : 22) + '" fill="#fff">' + n + '</text></svg>';
+}
+const svgVan = (soort, kleur) => soort === 'parking' ? PARKING_SVG : soort === 'nummer' ? nummerSvg(kleur) : pijlSvg(soort, kleur);
+function savePijl() { store(PIJL_KEY, pijlen.map(({ soort, kleur, deg, sx, sy, lat, lng }) => ({ soort, kleur, deg, sx, sy, lat, lng }))); }
+
+let gekozen = null;
+function kies(el) {
+  if (gekozen) gekozen.classList.remove('sel');
+  gekozen = el;
+  if (el) el.classList.add('sel');
+}
+map.on('click', () => kies(null));
+const curSp = () => Math.max(0.1, Math.pow(2, map.getZoom() - 20));
+const curSi = () => Math.min(2.5, Math.max(0.8, Math.pow(2, map.getZoom() - 18)));
+const klem = v => Math.min(6, Math.max(0.3, v));
+const SVG_DRAAI = '<svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5" fill="none" stroke="#1f2a24" stroke-width="2" stroke-linecap="round"/><path d="M15 1.5V6h-4.5" fill="none" stroke="#1f2a24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_REK = '<svg viewBox="0 0 20 20"><path d="M4 4l12 12M4 4h5M4 4v5M16 16h-5M16 16v-5" fill="none" stroke="#1f2a24" stroke-width="2" stroke-linecap="round"/></svg>';
+const SVG_WEG = '<svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="#d62d2d" stroke-width="2.5" stroke-linecap="round"/></svg>';
+
+function addPijl(d) {
+  const p = { soort: d.soort, kleur: d.kleur || '', deg: d.deg || 0, sx: d.sx || 1, sy: d.sy || 1, lat: d.lat, lng: d.lng };
+  const pijlvorm = ['recht', 'links', 'rechts'].includes(p.soort);
+  const loos = p.soort === 'icoon' || p.soort === 'nummer';
+  const el = document.createElement('div');
+  el.className = p.soort === 'icoon' ? 'pijl los' : p.soort === 'nummer' ? 'pijl los nr' : 'pijl';
+  el.innerHTML = p.soort === 'icoon' ? '<div class="rond">' + (ICONEN[p.kleur] ? ICONEN[p.kleur][1] : '') + '</div>' : svgVan(p.soort, p.kleur);
+  const toepas = () => {
+    el.style.setProperty('--r', p.deg + 'deg');
+    el.style.setProperty('--sx', p.sx);
+    el.style.setProperty('--sy', p.sy);
+  };
+  toepas();
+  const m = L.marker([p.lat, p.lng], { draggable: true, icon: L.divIcon({ html: el, className: '', iconSize: [0, 0] }) }).addTo(pijlLayer);
+  pijlen.push(p);
+  m.on('dragend', () => { const q = m.getLatLng(); p.lat = q.lat; p.lng = q.lng; savePijl(); });
+  const verwijder = () => { if (gekozen === el) gekozen = null; pijlLayer.removeLayer(m); pijlen = pijlen.filter(x => x !== p); savePijl(); };
+
+  {
+    m.on('click', () => kies(el));
+    const midden = ev => {
+      const c = map.latLngToContainerPoint(m.getLatLng());
+      const r = map.getContainer().getBoundingClientRect();
+      return [ev.clientX - (r.left + c.x), ev.clientY - (r.top + c.y)];
+    };
+    const sleep = (cls, svg, titel, beweeg) => {
+      const h = document.createElement('div');
+      h.className = 'h ' + cls;
+      h.title = titel;
+      h.innerHTML = svg;
+      ['mousedown', 'touchstart', 'click', 'dblclick'].forEach(t => h.addEventListener(t, ev => ev.stopPropagation()));
+      h.addEventListener('pointerdown', ev => { ev.stopPropagation(); ev.preventDefault(); h.setPointerCapture(ev.pointerId); h._actief = true; });
+      h.addEventListener('pointermove', ev => { if (h._actief) beweeg(ev); });
+      const stop = () => { if (h._actief) { h._actief = false; savePijl(); } };
+      h.addEventListener('pointerup', stop);
+      h.addEventListener('pointercancel', stop);
+      el.appendChild(h);
+    };
+    sleep('draai', SVG_DRAAI, 'Draaien: sleep rond de pijl', ev => {
+      const [dx, dy] = midden(ev);
+      const hoek = Math.atan2(dx, -dy) * 180 / Math.PI;
+      const hoek0 = Math.atan2(p.sx, p.sy) * 180 / Math.PI;
+      p.deg = Math.round((hoek - hoek0) / 5) * 5;
+      toepas();
+    });
+    sleep('rek', SVG_REK, pijlvorm ? 'Uitrekken: sleep in elke richting' : 'Groter of kleiner maken', ev => {
+      const [dx, dy] = midden(ev);
+      const a = p.deg * Math.PI / 180;
+      const lx = dx * Math.cos(a) + dy * Math.sin(a);
+      const ly = -dx * Math.sin(a) + dy * Math.cos(a);
+      const k = loos ? curSi() : curSp();
+      if (pijlvorm) {
+        p.sx = klem(-lx / (22 * k));
+        p.sy = klem(-ly / (22 * k));
+      } else {
+        p.sx = p.sy = klem(Math.hypot(lx, ly) / (22 * Math.SQRT2 * k));
+      }
+      toepas();
+    });
+    const weg = document.createElement('div');
+    weg.className = 'h weg';
+    weg.title = 'Verwijderen';
+    weg.innerHTML = SVG_WEG;
+    ['mousedown', 'touchstart', 'pointerdown', 'dblclick'].forEach(t => weg.addEventListener(t, ev => ev.stopPropagation()));
+    weg.addEventListener('click', ev => { ev.stopPropagation(); verwijder(); });
+    el.appendChild(weg);
+    if (d.kies) kies(el);
+  }
+}
+
+function voegPijlenToe(d) {
+  const kop = (tekst) => {
+    const h = document.createElement('h2');
+    h.textContent = tekst;
+    h.style.marginTop = '14px';
+    h.style.borderLeft = '4px solid #1e63d6';
+    h.style.paddingLeft = '6px';
+    d.appendChild(h);
+  };
+  const chip = (soort, kleur, titel) => {
+    const c = document.createElement('button');
+    c.className = 'chip mini';
+    c.draggable = true;
+    c.title = titel;
+    c.innerHTML = svgVan(soort, kleur);
+    c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', 'pijl:' + kleur + ':' + soort); e.dataTransfer.effectAllowed = 'copy'; });
+    c.addEventListener('click', () => { const ll = map.getCenter(); addPijl({ soort, kleur, lat: ll.lat, lng: ll.lng, kies: true }); savePijl(); });
+    d.appendChild(c);
+  };
+  kop('Looprichting');
+  Object.entries(KLEUREN).forEach(([kleur, [, naam]]) => {
+    const l = document.createElement('div');
+    l.className = 'kleurlabel';
+    l.textContent = naam;
+    d.appendChild(l);
+    Object.entries(SOORTEN).forEach(([soort, tekst]) => chip(soort, kleur, naam + ' – ' + tekst));
+  });
+  kop('Parking');
+  chip('parking', '', 'Parking');
+  kop('Nummers');
+  for (let n = 1; n <= 13; n++) chip('nummer', String(n), 'Nummer ' + n);
+}
+
+function voegPictogrammenToe(d) {
+  const h = document.createElement('h2');
+  h.textContent = 'Pictogrammen (los)';
+  h.style.marginTop = '14px';
+  h.style.borderLeft = '4px solid #1f2a24';
+  h.style.paddingLeft = '6px';
+  d.appendChild(h);
+  Object.entries(ICONEN).forEach(([k, [naam, svg]]) => {
+    const c = document.createElement('button');
+    c.className = 'chip mini';
+    c.draggable = true;
+    c.title = naam;
+    c.innerHTML = svg;
+    c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', 'pijl:' + k + ':icoon'); e.dataTransfer.effectAllowed = 'copy'; });
+    c.addEventListener('click', () => { const ll = map.getCenter(); addPijl({ soort: 'icoon', kleur: k, lat: ll.lat, lng: ll.lng }); savePijl(); });
+    d.appendChild(c);
+  });
+}
+
+/* ---------- Keuzemenu ---------- */
+const menu = document.getElementById('menu');
+[['Infrastructuur', c => c.key !== 'proef'], ['Koers', c => c.key === 'proef']].forEach(([titel, filter]) => {
+  const d = document.createElement('details');
+  d.open = true;
+  const sum = document.createElement('summary');
+  sum.textContent = titel;
+  d.appendChild(sum);
+  CATS.filter(filter).forEach(cat => {
+    const h = document.createElement('h2');
+    h.textContent = cat.titel;
+    h.style.marginTop = '14px';
+    h.style.borderLeft = '4px solid ' + cat.kleur;
+    h.style.paddingLeft = '6px';
+    d.appendChild(h);
+    TYPES.filter(t => t.cat === cat.key).forEach(t => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.draggable = true;
+      c.textContent = t.id.endsWith('-eigen') ? 'Eigen maat…' : t.naam + ' ' + t.b + ' × ' + t.l + ' m';
+      c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'copy'; });
+      c.addEventListener('click', () => plaats(t, map.getCenter()));
+      d.appendChild(c);
+    });
+  });
+  if (titel === 'Infrastructuur') voegPictogrammenToe(d);
+  if (titel === 'Koers') voegPijlenToe(d);
+  menu.appendChild(d);
+});
+const tip = document.createElement('p');
+tip.textContent = 'Sleep een hal op de kaart, of klik om hem in het midden te zetten.';
+menu.appendChild(tip);
+
+const mapEl = document.getElementById('map');
+mapEl.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+mapEl.addEventListener('drop', e => {
+  e.preventDefault();
+  const data = e.dataTransfer.getData('text/plain');
+  const ll = map.mouseEventToLatLng(e);
+  if (data.startsWith('pijl:')) {
+    const [, kleur, soort] = data.split(':');
+    addPijl({ soort, kleur, lat: ll.lat, lng: ll.lng, kies: true });
+    savePijl();
+    return;
+  }
+  const t = TYPES.find(x => x.id === data);
+  if (t) plaats(t, ll);
+});
+
+/* ---------- Start ---------- */
+async function start() {
+  (read(KEY_OBJ) || []).forEach(addObj);
+  (read(PIJL_KEY) || []).forEach(addPijl);
+  const saved = read(KEY);
+  if (saved && saved.length) { saved.forEach(addInkom); fit(); return; }
+  const c = (await geo('Ramsel, Herselt')) || FALLBACK;
+  map.setView(c, 15);
+  for (const [name, street, off] of DEFAULTS) {
+    await sleep(1100);
+    const p = (await geo(street + ', Ramsel, Herselt')) || [c[0] + off[0], c[1] + off[1]];
+    addInkom({ name, lat: p[0], lng: p[1] });
+  }
+  save();
+  fit();
+}
+
+document.getElementById('add').onclick = () => {
+  const c = map.getCenter();
+  addInkom({ name: 'Nieuwe inkom', lat: c.lat, lng: c.lng });
+  save();
+};
+document.getElementById('reset').onclick = () => {
+  if (!confirm('Alles terugzetten naar het begin (inkomsten en hallen)?')) return;
+  try { localStorage.removeItem(KEY); localStorage.removeItem(KEY_OBJ); localStorage.removeItem(PIJL_KEY); } catch (e) {}
+  layer.clearLayers(); objLayer.clearLayers(); pijlLayer.clearLayers();
+  items = []; objs = []; pijlen = [];
+  start();
+};
+
+start();
+</script>
+</body>
+</html>
